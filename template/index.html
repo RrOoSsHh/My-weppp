@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instagram Report Bot | ROSH</title>
+    <style>
+        body {
+            background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
+            color: white;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 2rem;
+            padding: 2rem;
+            width: 100%;
+            max-width: 700px;
+            box-shadow: 0 8px 32px 0 rgba(31,38,135,0.37);
+            border: 1px solid rgba(255,255,255,0.18);
+        }
+        h1 {
+            text-align: center;
+            color: #ffdd55;
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            margin-top: 1rem;
+            font-weight: bold;
+        }
+        input, select, button {
+            width: 100%;
+            padding: 0.7rem;
+            margin-top: 0.5rem;
+            border-radius: 1rem;
+            border: none;
+            font-size: 1rem;
+        }
+        input, select {
+            background: #2a2a3a;
+            color: white;
+        }
+        button {
+            background: #ff4757;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            margin-top: 1.5rem;
+        }
+        button:hover {
+            background: #e84118;
+            transform: scale(1.02);
+        }
+        .report-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .report-btn {
+            background: #1e90ff;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: 0.2s;
+        }
+        .report-btn.selected {
+            background: #ffa502;
+            color: black;
+        }
+        .stats {
+            background: #00000066;
+            border-radius: 1rem;
+            padding: 1rem;
+            margin: 1rem 0;
+            text-align: center;
+        }
+        .status {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        .flex-btns {
+            display: flex;
+            gap: 1rem;
+        }
+        .stop-btn {
+            background: #57606f;
+        }
+        .stop-btn:hover {
+            background: #2f3542;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.8rem;
+            opacity: 0.7;
+        }
+        .info {
+            background: #1e1e2a;
+            border-radius: 1rem;
+            padding: 0.5rem;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Instagram Reporter</h1>
+    <div>
+        <label>Session ID</label>
+        <input type="text" id="session_id" placeholder="Example: 1234567890%3Aabc...">
+        
+        <label>Target ID</label>
+        <input type="text" id="target_id" placeholder="Target account ID (numeric)">
+
+        <label>Report Type</label>
+        <div class="report-buttons" id="report-buttons">
+            {% for key, report in reports.items() %}
+                <div class="report-btn" data-key="{{ key }}" data-code="{{ report.code }}">{{ report.name }}</div>
+            {% endfor %}
+        </div>
+        <input type="hidden" id="selected_report_key" value="10">
+
+        <label>Delay Between Reports (seconds)</label>
+        <input type="number" id="interval" value="5" min="1">
+        
+        <label>Number of Reports (0 = infinite)</label>
+        <input type="number" id="repeats" value="1" min="0">
+        
+        <div class="flex-btns">
+            <button id="startBtn">Start</button>
+            <button id="stopBtn" class="stop-btn">Stop</button>
+        </div>
+
+        <div class="stats">
+            <div>Success: <span id="successCount">0</span> &nbsp;|&nbsp; Failed: <span id="failedCount">0</span></div>
+            <div class="status" id="lastStatus">Waiting</div>
+        </div>
+        <div class="info" id="infoBox"></div>
+    </div>
+    <div class="footer">Instagram Report Bot | Dev: ROSH - Web Version</div>
+</div>
+
+<script>
+    // --- Report type selection ---
+    const btns = document.querySelectorAll('.report-btn');
+    const selectedInput = document.getElementById('selected_report_key');
+    
+    function setSelectedReport(key) {
+        selectedInput.value = key;
+        btns.forEach(btn => {
+            if(btn.getAttribute('data-key') === key) {
+                btn.classList.add('selected');
+            } else {
+                btn.classList.remove('selected');
+            }
+        });
+    }
+    
+    btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const key = btn.getAttribute('data-key');
+            setSelectedReport(key);
+        });
+    });
+    
+    // Set default selection: first button
+    if(btns.length) {
+        setSelectedReport(btns[0].getAttribute('data-key'));
+    }
+    
+    // --- Control elements ---
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const successSpan = document.getElementById('successCount');
+    const failedSpan = document.getElementById('failedCount');
+    const statusSpan = document.getElementById('lastStatus');
+    const infoBox = document.getElementById('infoBox');
+    
+    let statusInterval = null;
+    
+    async function fetchStatus() {
+        try {
+            const res = await fetch('/status');
+            const data = await res.json();
+            successSpan.innerText = data.success;
+            failedSpan.innerText = data.failed;
+            let statusText = data.last_status;
+            if(data.running) {
+                statusText += ' - Running';
+            } else {
+                statusText += ' - Stopped';
+            }
+            statusSpan.innerText = statusText;
+            if(data.target_id) {
+                infoBox.innerText = `Target: ${data.target_id} | Report type: ${data.report_name || 'Not specified'}`;
+            } else {
+                infoBox.innerText = 'Bot not started yet';
+            }
+        } catch(e) {
+            console.error('Error fetching status', e);
+        }
+    }
+    
+    async function startBot() {
+        const session_id = document.getElementById('session_id').value.trim();
+        const target_id = document.getElementById('target_id').value.trim();
+        const report_key = selectedInput.value;
+        const interval = document.getElementById('interval').value;
+        const repeats = document.getElementById('repeats').value;
+        
+        if(!session_id || !target_id) {
+            alert('Please enter Session ID and Target ID');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({session_id, target_id, report_key, interval, repeats})
+            });
+            const result = await response.json();
+            if(result.status === 'already_running') {
+                alert('Bot is already running!');
+            } else if(result.status === 'error') {
+                alert('Error: ' + (result.message || 'Unknown error'));
+            } else if(result.status === 'started') {
+                // Clear old interval and start new one
+                if(statusInterval) clearInterval(statusInterval);
+                statusInterval = setInterval(fetchStatus, 1000);
+                // Immediate update
+                fetchStatus();
+            }
+        } catch(e) {
+            alert('Failed to connect to server: ' + e.message);
+        }
+    }
+    
+    async function stopBot() {
+        try {
+            await fetch('/stop', {method: 'POST'});
+            if(statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+            fetchStatus();
+        } catch(e) {
+            console.error(e);
+        }
+    }
+    
+    startBtn.addEventListener('click', startBot);
+    stopBtn.addEventListener('click', stopBot);
+    
+    // Periodic status update every 3 seconds
+    fetchStatus();
+    setInterval(fetchStatus, 3000);
+</script>
+</body>
+</html>
